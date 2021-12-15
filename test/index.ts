@@ -14,7 +14,6 @@ describe("Promise", () => {
     assert.isObject(MyPromise.prototype);
   });
   it("new Promise()接受一个函数", () => {
-    // 如果没有传递函数，就会报错
     assert.throw(() => {
       //@ts-ignore
       new MyPromise();
@@ -34,15 +33,11 @@ describe("Promise", () => {
   });
   it("p.then(success)的success回调会在resolve被调用后执行", (done) => {
     const success = sinon.fake();
-    const p = new MyPromise((resolve, reject) => {
-      // 断言，在resolve执行前，success不会执行
+    const p = new MyPromise((resolve) => {
       assert.isFalse(success.called);
       resolve();
-      // 之所以设置定时器，是因为resolve的过程是异步的，等待then执行后将success绑定到实例对象，再执行success
       setTimeout(() => {
-        // 断言，在resolve后，success才会执行
         assert(success.called);
-        // 保证代码执行完毕才算测试结束
         done();
       });
     });
@@ -55,5 +50,59 @@ describe("Promise", () => {
       reject();
     });
     p.then(false, 1);
+  });
+  it("success函数必须在promise完成(fulfilled)后被调用,并把promise的值作为它的第一个参数；完成(fulfilled)之前绝对不能被调用；绝对不能被调用超过一次", (done) => {
+    const success = sinon.fake();
+    const p = new MyPromise((resolve) => {
+      assert.isFalse(success.called);
+      resolve(233);
+      resolve(111);
+      setTimeout(() => {
+        assert(p.state === "fulfilled");
+        assert(success.calledOnce);
+        assert(success.calledWith(233));
+        done();
+      }, 0);
+    });
+    p.then(success);
+  });
+  it("在我们的代码执行结束之前，不得调用then中的两个函数", (done) => {
+    const success = sinon.fake();
+    const p = new MyPromise((resolve) => {
+      resolve();
+    });
+    p.then(success);
+    assert.isFalse(success.called);
+    setTimeout(() => {
+      assert(success.called);
+      done();
+    }, 0);
+  });
+  it("then的两个函数只能以函数形式调用，即内部this指向undefined", (done) => {
+    const p = new MyPromise((resolve) => {
+      resolve();
+    });
+    p.then(function () {
+      "use strict";
+      assert(this === undefined);
+      done();
+    });
+  });
+  it("then可以在同一个promise中多次调用，且依据then的顺序调用", (done) => {
+    const p = new MyPromise((resolve) => {
+      resolve();
+    });
+    const callback = [sinon.fake(), sinon.fake(), sinon.fake()];
+    p.then(callback[0]);
+    p.then(callback[1]);
+    p.then(callback[2]);
+    setTimeout(() => {
+      assert(callback[0].called);
+      assert(callback[1].called);
+      assert(callback[2].called);
+      assert(callback[1].calledAfter(callback[0]));
+      assert(callback[2].calledAfter(callback[1]));
+      done();
+    }, 0);
   });
 });
